@@ -1,0 +1,29 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libwayland-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+
+  windows-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - run: cargo test --locked --target x86_64-pc-windows-msvc
+      - run: cargo build --release --locked --target x86_64-pc-windows-msvc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clipdeck-windows-msvc
+          path: target/x86_64-pc-windows-msvc/release/clipdeck.exe
