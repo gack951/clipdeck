@@ -47,7 +47,7 @@ unsafe extern "system" {
 const MAX_ITEMS: usize = 300;
 const MAX_TEXT: usize = 2_000_000;
 const MAX_PIXELS: usize = 16_000_000;
-const DIALOG_SIZE: [f32; 2] = [620.0, 220.0];
+const DIALOG_SIZE: [f32; 2] = [760.0, 400.0];
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value")]
@@ -445,6 +445,48 @@ fn configure_fonts(ctx: &egui::Context) {
     }
     ctx.set_fonts(fonts);
 }
+fn configure_style(ctx: &egui::Context) {
+    ctx.set_theme(egui::Theme::Dark);
+    let mut style = (*ctx.style_of(egui::Theme::Dark)).clone();
+    style.text_styles.insert(
+        egui::TextStyle::Heading,
+        egui::FontId::new(24.0, egui::FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Body,
+        egui::FontId::new(17.0, egui::FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Button,
+        egui::FontId::new(17.0, egui::FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Monospace,
+        egui::FontId::new(16.0, egui::FontFamily::Monospace),
+    );
+    style.spacing.item_spacing = egui::vec2(12.0, 12.0);
+    style.spacing.button_padding = egui::vec2(14.0, 10.0);
+    style.spacing.interact_size.y = 42.0;
+
+    let mut visuals = egui::Visuals::dark();
+    visuals.override_text_color = Some(egui::Color32::from_rgb(245, 245, 245));
+    visuals.weak_text_color = Some(egui::Color32::from_rgb(205, 210, 218));
+    visuals.panel_fill = egui::Color32::from_rgb(18, 20, 24);
+    visuals.window_fill = visuals.panel_fill;
+    visuals.extreme_bg_color = egui::Color32::from_rgb(8, 9, 11);
+    visuals.text_edit_bg_color = Some(egui::Color32::from_rgb(8, 9, 11));
+    visuals.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(49, 54, 63);
+    visuals.widgets.inactive.bg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(105, 113, 126));
+    visuals.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(54, 112, 184);
+    visuals.widgets.hovered.bg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(125, 190, 255));
+    visuals.widgets.active.weak_bg_fill = egui::Color32::from_rgb(38, 91, 158);
+    visuals.widgets.active.bg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(156, 207, 255));
+    style.visuals = visuals;
+    ctx.set_style_of(egui::Theme::Dark, style);
+}
 fn tray_icon() -> Result<tray::TrayIcon, String> {
     let mut rgba = vec![0; 32 * 32 * 4];
     for y in 0..32 {
@@ -627,8 +669,8 @@ struct App {
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
         configure_fonts(&cc.egui_ctx);
+        configure_style(&cc.egui_ctx);
         let (tx, rx) = mpsc::channel();
         watch(tx, cc.egui_ctx.clone());
         let (tray_tx, tray_rx) = mpsc::channel();
@@ -757,7 +799,7 @@ impl App {
     }
     fn path_dialog_ui(&mut self, ui: &mut egui::Ui) {
         ui.painter()
-            .rect_filled(ui.max_rect(), 0.0, egui::Color32::from_rgb(27, 27, 27));
+            .rect_filled(ui.max_rect(), 0.0, egui::Color32::from_rgb(18, 20, 24));
         let ctrl_enter = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Enter));
         let ctrl_backspace = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Backspace));
         let enter = ui.input(|i| !i.modifiers.ctrl && i.key_pressed(egui::Key::Enter));
@@ -772,11 +814,11 @@ impl App {
         }
 
         let dialog = self.path_dialog.as_mut().unwrap();
+        ui.add_space(8.0);
         ui.heading("パスを開く");
-        let response = ui.add(
-            egui::TextEdit::singleline(&mut dialog.input)
-                .desired_width(f32::INFINITY)
-                .id_salt("path-input"),
+        let response = ui.add_sized(
+            [ui.available_width(), 44.0],
+            egui::TextEdit::singleline(&mut dialog.input).id_salt("path-input"),
         );
         if dialog.focus_requested {
             response.request_focus();
@@ -786,51 +828,86 @@ impl App {
         let path = PathBuf::from(dialog.input.trim().trim_matches('"'));
         let path_exists = path.exists();
         let parent = existing_parent(&path).map(Path::to_path_buf);
-        ui.label(if path_exists {
-            "パス: 存在します"
-        } else {
-            "パス: 存在しません"
-        });
-        ui.label(if parent.is_some() {
-            "親フォルダ: 存在します"
-        } else {
-            "親フォルダ: 存在しません"
-        });
-
+        ui.add_space(4.0);
         let mut result = None;
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(path_exists, egui::Button::new("開く (Enter)"))
-                .clicked()
-                || (enter && path_exists)
-            {
-                result = Some(shell_open(&path.to_string_lossy()));
-            }
-            if ui
-                .add_enabled(parent.is_some(), egui::Button::new("親を開く (Backspace)"))
-                .clicked()
-                || (backspace_pressed && parent.is_some())
-            {
-                result = Some(explorer_folder(parent.as_ref().unwrap()));
-            }
-            if ui
-                .add_enabled(path_exists, egui::Button::new("指定アプリ (Ctrl+Enter)"))
-                .clicked()
-                || (ctrl_enter && path_exists)
-            {
-                result = Some(if is_excel(&path) {
-                    open_excel_read_only(&path, &self.history.open_with)
-                } else {
-                    open_with(&self.history.open_with, &path)
-                });
-            }
-            if ctrl_backspace && parent.is_some() {
-                result = Some(open_with(&self.history.open_with, parent.as_ref().unwrap()));
-            }
-        });
-        ui.label("Ctrl+Backspace: 親を指定アプリで開く / Ctrl+C: UNCパスをコピー / Esc: 閉じる");
+        let button_width = (ui.available_width() - 12.0) / 2.0;
+        let button_size = egui::vec2(button_width, 52.0);
+        let mut open_clicked = false;
+        let mut app_clicked = false;
+        let mut parent_clicked = false;
+        let mut parent_app_clicked = false;
+        let mut copy_clicked = false;
+        let mut close_clicked = false;
+        egui::Grid::new("path-actions")
+            .num_columns(2)
+            .spacing([12.0, 12.0])
+            .show(ui, |ui| {
+                open_clicked = ui
+                    .add_enabled(
+                        path_exists,
+                        egui::Button::new("開く")
+                            .shortcut_text("Enter")
+                            .min_size(button_size),
+                    )
+                    .clicked();
+                app_clicked = ui
+                    .add_enabled(
+                        path_exists,
+                        egui::Button::new("指定アプリで開く")
+                            .shortcut_text("Ctrl + Enter")
+                            .min_size(button_size),
+                    )
+                    .clicked();
+                ui.end_row();
+                parent_clicked = ui
+                    .add_enabled(
+                        parent.is_some(),
+                        egui::Button::new("親フォルダを開く")
+                            .shortcut_text("Backspace")
+                            .min_size(button_size),
+                    )
+                    .clicked();
+                parent_app_clicked = ui
+                    .add_enabled(
+                        parent.is_some(),
+                        egui::Button::new("親を指定アプリで開く")
+                            .shortcut_text("Ctrl + Backspace")
+                            .min_size(button_size),
+                    )
+                    .clicked();
+                ui.end_row();
+                copy_clicked = ui
+                    .add(
+                        egui::Button::new("UNCパスをコピー")
+                            .shortcut_text("Ctrl + C")
+                            .min_size(button_size),
+                    )
+                    .clicked();
+                close_clicked = ui
+                    .add(
+                        egui::Button::new("閉じる")
+                            .shortcut_text("Esc")
+                            .min_size(button_size),
+                    )
+                    .clicked();
+                ui.end_row();
+            });
 
-        if copy {
+        if open_clicked || (enter && path_exists) {
+            result = Some(shell_open(&path.to_string_lossy()));
+        } else if app_clicked || (ctrl_enter && path_exists) {
+            result = Some(if is_excel(&path) {
+                open_excel_read_only(&path, &self.history.open_with)
+            } else {
+                open_with(&self.history.open_with, &path)
+            });
+        } else if parent_clicked || (backspace_pressed && parent.is_some()) {
+            result = Some(explorer_folder(parent.as_ref().unwrap()));
+        } else if parent_app_clicked || (ctrl_backspace && parent.is_some()) {
+            result = Some(open_with(&self.history.open_with, parent.as_ref().unwrap()));
+        }
+
+        if copy_clicked || copy {
             match copy_unc(&path) {
                 Ok(clipboard) => {
                     self.owned_clipboard = Some(clipboard);
@@ -846,7 +923,7 @@ impl App {
                 self.hide(ui.ctx());
             }
         }
-        if escape {
+        if close_clicked || escape {
             self.hide(ui.ctx());
         }
         if !self.status.is_empty() {
@@ -920,7 +997,7 @@ impl eframe::App for App {
         }
         egui::CentralPanel::default().show(ui, |ui| {
             ui.painter()
-                .rect_filled(ui.max_rect(), 0.0, egui::Color32::from_rgb(27, 27, 27));
+                .rect_filled(ui.max_rect(), 0.0, egui::Color32::from_rgb(18, 20, 24));
             ui.heading("ClipDeck");
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.monitoring, "監視");
@@ -1123,7 +1200,8 @@ fn main() -> eframe::Result {
         .with_title("ClipDeck")
         .with_inner_size(DIALOG_SIZE)
         .with_visible(false)
-        .with_decorations(false)
+        .with_decorations(true)
+        .with_close_button(true)
         .with_taskbar(false);
     let options = eframe::NativeOptions {
         viewport,
